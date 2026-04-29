@@ -1,0 +1,58 @@
+# PayWork — Docker Compose
+# Spins up a local Canopy node (with the PayWork plugin loaded) + the frontend.
+#
+# Usage:
+#   docker compose up
+#
+# After startup:
+#   Frontend:    http://localhost:3000
+#   Query RPC:   http://localhost:50002
+#   TX RPC:      http://localhost:50003
+#   Explorer:    http://localhost:9000  (Canopy web wallet/explorer)
+
+version: "3.9"
+
+services:
+
+  # ── Canopy Node (with PayWork plugin) ───────────────────────────────────────
+  canopy-node:
+    image: canopynetwork/canopy:latest
+    container_name: paywork-canopy-node
+    restart: unless-stopped
+    environment:
+      - CANOPY_CHAIN_ID=paywork-local-1
+      - CANOPY_DEV_MODE=true          # Accepts unsigned txs for local testing
+      - CANOPY_PLUGINS=paywork        # Loads the paywork plugin
+      - CANOPY_LOG_LEVEL=info
+    ports:
+      - "50002:50002"   # Query RPC
+      - "50003:50003"   # Transaction RPC
+      - "9000:9000"     # Web wallet / explorer
+      - "26656:26656"   # P2P
+    volumes:
+      - canopy-data:/root/.canopy
+      - ./plugin:/plugins/paywork:ro  # Mounts the PayWork plugin source
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:50002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # ── PayWork Frontend ─────────────────────────────────────────────────────────
+  paywork-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: paywork-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_CANOPY_QUERY_URL=http://canopy-node:50002
+      - VITE_CANOPY_TX_URL=http://canopy-node:50003
+    ports:
+      - "3000:3000"
+    depends_on:
+      canopy-node:
+        condition: service_healthy
+
+volumes:
+  canopy-data:
